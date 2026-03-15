@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>极简记账 (倒扣版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #34c759; /* 记账版主色调换成代表金钱的绿色 */
+            --bg: #f4f7f6; --card-bg: #ffffff;
+            --text-main: #1c1c1e; --text-sub: #8e8e93; --border: #e5e5ea;
+            --red: #ff3b30; --tab-bg: #f0f0f5; --item-bg: #f9f9f9; --modal-bg: rgba(0,0,0,0.4);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --primary: #32d74b; --bg: #000000; --card-bg: #1c1c1e;
+                --text-main: #f2f2f7; --text-sub: #98989d; --border: #38383a;
+                --red: #ff453a; --tab-bg: #2c2c2e; --item-bg: #2c2c2e; --modal-bg: rgba(0,0,0,0.7);
+            }
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg); margin: 0; padding: 15px;
+            display: flex; justify-content: center; -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.3s;
+        }
+        .app-container {
+            width: 100%; max-width: 420px; background: var(--card-bg);
+            border-radius: 24px; padding: 20px; box-sizing: border-box;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.06); transition: background-color 0.3s;
+        }
+        
+        /* 顶部看板 */
+        .header { text-align: center; margin-bottom: 20px; position: relative; }
+        .date-info { font-size: 16px; font-weight: 600; color: var(--text-main); margin-bottom: 2px;}
+        .month-info { color: var(--text-sub); font-size: 13px; margin-bottom: 12px;}
+        .today-label { color: var(--text-sub); font-size: 14px; font-weight: 600; margin-bottom: 5px; }
+        .big-time { font-size: 48px; font-weight: 800; color: var(--text-main); margin: 0; line-height: 1.1; }
+        .subtitle { color: var(--text-sub); font-size: 14px; margin-top: 8px; background: var(--tab-bg); padding: 6px 12px; border-radius: 8px; display: inline-block; font-weight: 600;}
+        .quote-text { 
+            font-size: 14px; font-weight: 700; color: var(--primary); 
+            margin-top: 15px; display: inline-block; padding: 6px 14px; 
+            background: rgba(52, 199, 89, 0.1); border-radius: 12px; cursor: pointer;
+        }
+        .btn-set-budget {
+            position: absolute; top: 0; right: 0; background: none; border: none;
+            color: var(--primary); font-size: 20px; cursor: pointer; padding: 5px;
+        }
+        
+        /* 表单区 */
+        .input-group { margin-bottom: 12px; display: flex; gap: 8px; width: 100%; }
+        select, input[type="number"], input[type="text"] {
+            width: 100%; padding: 14px 12px; border: 1px solid var(--border);
+            border-radius: 12px; font-size: 16px; background-color: var(--item-bg);
+            color: var(--text-main); outline: none; box-sizing: border-box;
+        }
+        select:focus, input:focus { border-color: var(--primary); }
+        .amount-input-wrapper { position: relative; flex: 1; }
+        .amount-input-wrapper::before {
+            content: "¥"; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+            color: var(--text-main); font-weight: 600; font-size: 16px;
+        }
+        input[type="number"] { padding-left: 28px; font-family: monospace; font-size: 18px; font-weight: bold;}
+        
+        .btn-group { display: flex; gap: 10px; margin-top: 5px; }
+        button {
+            flex: 1; border: none; padding: 16px; border-radius: 12px;
+            font-size: 16px; font-weight: 600; cursor: pointer; transition: 0.2s;
+        }
+        .btn-primary { background-color: var(--primary); color: white; }
+        .btn-primary:active { background-color: #28a745; }
+
+        /* 列表与视图 */
+        .today-logs-sec { margin-top: 20px; padding-top: 15px; border-top: 1px dashed var(--border); }
+        .sec-title { font-size: 13px; font-weight: 600; color: var(--text-sub); margin-bottom: 10px; }
+        .mini-log-item {
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--item-bg); padding: 10px 12px; border-radius: 10px; margin-bottom: 8px;
+            font-size: 14px; color: var(--text-main);
+        }
+        .mini-log-left { display: flex; align-items: center; gap: 8px; }
+        .del-btn { background: none; border: none; color: var(--red); padding: 5px; font-size: 16px; width: auto; height: auto; }
+        .tabs { display: flex; margin: 25px 0 15px 0; background: var(--tab-bg); border-radius: 10px; padding: 4px; }
+        .tab-btn { flex: 1; text-align: center; padding: 8px 0; font-size: 14px; font-weight: 600; color: var(--text-sub); border-radius: 8px; cursor: pointer; }
+        .tab-btn.active { background: var(--card-bg); color: var(--text-main); box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+        .chart-wrapper { position: relative; height: 200px; width: 100%; margin-bottom: 20px; }
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+        .task-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+        .task-card { background: var(--item-bg); border: 1px solid var(--border); border-radius: 16px; padding: 15px; display: flex; flex-direction: column; gap: 8px; color: var(--text-main); }
+        .card-header { display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 16px; }
+        .task-color-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block;}
+        .card-stats { display: flex; justify-content: space-between; font-size: 14px; color: var(--text-sub); background: var(--tab-bg); padding: 8px 12px; border-radius: 8px; font-family: monospace;}
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="header">
+        <button class="btn-set-budget" onclick="setMonthlyBudget()" title="设置月预算">⚙️</button>
+        <div class="date-info" id="dateDisplay">加载中...</div>
+        <div class="month-info" id="monthDisplay">--</div>
+        
+        <div class="today-label">本月剩余可用</div>
+        <div class="big-time" id="displayRemaining">¥ 0.00</div>
+        <div class="subtitle" id="todaySpentDisplay">今日已花: ¥ 0.00</div>
+        <br>
+        <div class="quote-text" id="quoteDisplay" onclick="setMonthlyBudget()">点击设置本月预算 💰</div>
+    </div>
+
+    <div class="input-group">
+        <select id="expensePreset" onchange="toggleCustomInput()" style="flex: 1;">
+            <optgroup label="🍔 餐饮美食">
+                <option value="正餐">正餐 / 外卖</option>
+                <option value="买菜">买菜 / 烘焙</option>
+                <option value="零食饮料">咖啡 / 零食</option>
+            </optgroup>
+            <optgroup label="🚌 交通出行">
+                <option value="公共交通">地铁 / 公交</option>
+                <option value="打车">打车</option>
+            </optgroup>
+            <optgroup label="🛒 购物日用">
+                <option value="日用品">日用品</option>
+                <option value="服饰鞋包">服饰 / 鞋包</option>
+                <option value="护肤美妆">护肤 / 美妆</option>
+            </optgroup>
+            <optgroup label="🎉 休闲其他">
+                <option value="娱乐社交">娱乐 / 聚餐</option>
+                <option value="房租水电">房租 / 话费</option>
+                <option value="医疗健康">医疗 / 药品</option>
+            </optgroup>
+            <option value="custom">✍️ 手动输入其它...</option>
+        </select>
+    </div>
+    
+    <div class="input-group" id="customInputDiv" style="display: none;">
+        <input type="text" id="customExpenseName" placeholder="输入支出名称...">
+    </div>
+
+    <div class="input-group">
+        <div class="amount-input-wrapper">
+            <input type="number" id="expenseAmount" placeholder="0.00" step="0.01" inputmode="decimal">
+        </div>
+    </div>
+    
+    <div class="btn-group">
+        <button class="btn-primary" onclick="logExpense()">记一笔支出</button>
+    </div>
+
+    <div class="today-logs-sec">
+        <div class="sec-title">📝 今日花销明细 (点 🗑️ 可撤销)</div>
+        <div id="todayLogsList"></div>
+    </div>
+
+    <div class="tabs">
+        <div class="tab-btn active" onclick="switchView('month')">本月总览</div>
+        <div class="tab-btn" onclick="switchView('week')">本周花销</div>
+    </div>
+    <div id="viewMonth" class="view-section active">
+        <div class="chart-wrapper"><canvas id="monthChart"></canvas></div>
+        <ul class="task-list" id="monthTaskList"></ul>
+    </div>
+    <div id="viewWeek" class="view-section">
+        <div class="chart-wrapper"><canvas id="weekChart"></canvas></div>
+        <ul class="task-list" id="weekTaskList"></ul>
+    </div>
+</div>
+
+<script>
+    // --- 数据初始化 ---
+    let expenseLogs = JSON.parse(localStorage.getItem('expenseLogs')) || [];
+    let monthlyBudget = parseFloat(localStorage.getItem('monthlyBudget')) || 0;
+    
+    // 分类颜色库 (财务相关色系)
+    const EXPENSE_CATEGORIES = {
+        '正餐':'#ff9500', '买菜':'#34c759', '零食饮料':'#ffcc00', 
+        '公共交通':'#5ac8fa', '打车':'#007aff', 
+        '日用品':'#8e8e93', '服饰鞋包':'#af52de', '护肤美妆':'#ff2d55',
+        '娱乐社交':'#ff3b30', '房租水电':'#0056b3', '医疗健康':'#3cb371'
+    };
+
+    function getColorForCategory(name) {
+        if (EXPENSE_CATEGORIES[name]) return EXPENSE_CATEGORIES[name];
+        let hash = 0; for(let i=0; i<name.length; i++) hash = name.charCodeAt(i) + ((hash<<5)-hash);
+        const fb = ['#007aff', '#34c759', '#ff9500', '#ff3b30', '#5856d6', '#ff2d55', '#af52de'];
+        return fb[Math.abs(hash) % fb.length];
+    }
+
+    function toggleCustomInput() {
+        document.getElementById('customInputDiv').style.display = document.getElementById('expensePreset').value === 'custom' ? 'flex' : 'none';
+    }
+
+    // --- 核心工具函数 ---
+    function formatMoney(num) { return parseFloat(num).toFixed(2); }
+    function getTodayStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+    
+    function isThisWeek(dateStr) {
+        const d = new Date(dateStr); const now = new Date(); const day = now.getDay() || 7; 
+        const mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1);
+        const sun = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (7 - day));
+        mon.setHours(0,0,0,0); sun.setHours(23,59,59,999);
+        return d >= mon && d <= sun;
+    }
+    function isThisMonth(dateStr) {
+        const d = new Date(dateStr); const now = new Date();
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }
+    
+    function getDaysInMonth(year, month) { return new Date(year, month, 0).getDate(); }
+
+    // --- 设置预算 ---
+    function setMonthlyBudget() {
+        let input = prompt("请输入你每月的预算总额 (¥):", monthlyBudget || 5000);
+        if (input !== null && !isNaN(parseFloat(input))) {
+            monthlyBudget = parseFloat(input);
+            localStorage.setItem('monthlyBudget', monthlyBudget);
+            renderApp();
+        }
+    }
+
+    // --- 记录花销 ---
+    function logExpense() {
+        if (monthlyBudget <= 0) {
+            alert("请先点击右上角 ⚙️ 设置本月的预算总额！");
+            setMonthlyBudget();
+            return;
+        }
+
+        let categoryName = document.getElementById('expensePreset').value;
+        if (categoryName === 'custom') {
+            categoryName = document.getElementById('customExpenseName').value.trim();
+            if(!categoryName) { alert("请输入支出名称！"); return; }
+        }
+        
+        let amountStr = document.getElementById('expenseAmount').value;
+        let amount = parseFloat(amountStr);
+        if (isNaN(amount) || amount <= 0) { alert("请输入正确的有效金额！"); return; }
+
+        expenseLogs.push({ id: Date.now(), date: getTodayStr(), category: categoryName, amount: amount });
+        localStorage.setItem('expenseLogs', JSON.stringify(expenseLogs));
+
+        // 清空输入框
+        document.getElementById('expenseAmount').value = '';
+        if(categoryName === 'custom') document.getElementById('customExpenseName').value = '';
+        renderApp();
+    }
+
+    function deleteLog(id) {
+        if(confirm("确定要删除这笔记录吗？金额将自动退回余额。")) {
+            expenseLogs = expenseLogs.filter(log => log.id !== id);
+            localStorage.setItem('expenseLogs', JSON.stringify(expenseLogs));
+            renderApp();
+        }
+    }
+
+    // --- UI 渲染 ---
+    let monthChartInst = null; let weekChartInst = null;
+
+    function renderApp() {
+        const d = new Date(); const days = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+        document.getElementById('dateDisplay').innerText = `${d.getMonth()+1}月${d.getDate()}日 ${days[d.getDay()]}`;
+        document.getElementById('monthDisplay').innerText = `${d.getFullYear()}年 ${d.getMonth()+1}月账本`;
+        
+        const todayStr = getTodayStr();
+        const monthLogs = expenseLogs.filter(log => isThisMonth(log.date));
+        const weekLogs = expenseLogs.filter(log => isThisWeek(log.date));
+        const todayLogs = expenseLogs.filter(log => log.date === todayStr);
+        
+        // 计算汇总
+        let monthTotalSpent = monthLogs.reduce((acc, log) => acc + log.amount, 0);
+        let todayTotalSpent = todayLogs.reduce((acc, log) => acc + log.amount, 0);
+        let remainingBudget = monthlyBudget - monthTotalSpent;
+        
+        // 渲染顶部数字
+        document.getElementById('displayRemaining').innerText = `¥ ${formatMoney(remainingBudget)}`;
+        document.getElementById('todaySpentDisplay').innerText = `今日已花: ¥ ${formatMoney(todayTotalSpent)}`;
+        
+        // 动态日均计算 (理财建议)
+        const daysLeft = getDaysInMonth(d.getFullYear(), d.getMonth()+1) - d.getDate() + 1;
+        let quoteEl = document.getElementById('quoteDisplay');
+        if (monthlyBudget <= 0) {
+            quoteEl.innerText = "点击设置本月预算 💰";
+            quoteEl.style.color = "var(--primary)";
+        } else if (remainingBudget < 0) {
+            quoteEl.innerText = `已超支 ¥${formatMoney(Math.abs(remainingBudget))}，准备吃土 😭`;
+            quoteEl.style.color = "var(--red)";
+        } else {
+            let dailySuggested = remainingBudget / daysLeft;
+            quoteEl.innerText = `本月剩 ${daysLeft} 天，建议日均可用 ¥${formatMoney(dailySuggested)}`;
+            quoteEl.style.color = "var(--primary)";
+        }
+
+        // 渲染今日列表
+        const todayListEl = document.getElementById('todayLogsList'); todayListEl.innerHTML = '';
+        if(todayLogs.length === 0) { todayListEl.innerHTML = '<div style="color:var(--text-sub); font-size:13px; text-align:center;">今天还没有花钱，保持住！</div>'; } 
+        else {
+            [...todayLogs].reverse().forEach(log => {
+                todayListEl.innerHTML += `
+                    <div class="mini-log-item">
+                        <div class="mini-log-left"><span class="task-color-dot" style="background-color: ${getColorForCategory(log.category)}"></span><span>${log.category}</span>
+                        <span style="font-family:monospace; color:var(--text-main); font-weight:bold; margin-left:10px;">¥${formatMoney(log.amount)}</span></div>
+                        <button class="del-btn" onclick="deleteLog(${log.id})">🗑️</button>
+                    </div>`;
+            });
+        }
+
+        // 渲染本月图表与卡片 (Doughnut 包含剩余部分)
+        let monthSummary = {}; 
+        monthLogs.forEach(log => { if (!monthSummary[log.category]) monthSummary[log.category] = 0; monthSummary[log.category] += log.amount; });
+
+        const monthListEl = document.getElementById('monthTaskList'); monthListEl.innerHTML = '';
+        Object.keys(monthSummary).sort((a,b)=>monthSummary[b]-monthSummary[a]).forEach(cat => {
+            monthListEl.innerHTML += `
+                <li class="task-card" style="flex-direction: row; justify-content: space-between; align-items:center;">
+                    <span class="card-header" style="font-size: 15px;"><span class="task-color-dot" style="background-color: ${getColorForCategory(cat)}"></span>${cat}</span>
+                    <span style="font-family: monospace; font-weight: bold; font-size:16px;">¥${formatMoney(monthSummary[cat])}</span>
+                </li>`;
+        });
+
+        const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        Chart.defaults.color = isDark ? '#98989d' : '#8e8e93'; const emptyChartColor = isDark ? '#38383a' : '#e5e5ea';
+
+        if(monthChartInst) monthChartInst.destroy();
+        const ctxMonth = document.getElementById('monthChart').getContext('2d');
+        let mLabels = remainingBudget > 0 ? ['剩余可用预算'] : []; 
+        let mData = remainingBudget > 0 ? [remainingBudget] : []; 
+        let mColors = remainingBudget > 0 ? [emptyChartColor] : [];
+        Object.keys(monthSummary).forEach(cat => { mLabels.push(cat); mData.push(monthSummary[cat]); mColors.push(getColorForCategory(cat)); });
+        
+        if(mData.length === 0 && monthlyBudget > 0) { mLabels=['剩余可用预算']; mData=[monthlyBudget]; mColors=[emptyChartColor]; }
+        else if (mData.length === 0) { mLabels=['暂未设置预算']; mData=[1]; mColors=[emptyChartColor]; }
+
+        monthChartInst = new Chart(ctxMonth, { type: 'doughnut', data: { labels: mLabels, datasets: [{ data: mData, backgroundColor: mColors, borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } } });
+
+        // 渲染本周图表 (Pie 纯看开销分布)
+        let weekSummary = {};
+        weekLogs.forEach(log => { if (!weekSummary[log.category]) weekSummary[log.category] = 0; weekSummary[log.category] += log.amount; });
+        const weekListEl = document.getElementById('weekTaskList'); weekListEl.innerHTML = '';
+        Object.keys(weekSummary).sort((a,b)=>weekSummary[b]-weekSummary[a]).forEach(cat => {
+            weekListEl.innerHTML += `<li class="task-card" style="flex-direction: row; justify-content: space-between;"><span class="card-header" style="font-size: 15px;"><span class="task-color-dot" style="background-color: ${getColorForCategory(cat)}"></span>${cat}</span><span style="font-family: monospace; font-weight: bold;">¥${formatMoney(weekSummary[cat])}</span></li>`;
+        });
+        
+        if(weekChartInst) weekChartInst.destroy();
+        const ctxWeek = document.getElementById('weekChart').getContext('2d');
+        let wLabels = []; let wData = []; let wColors = [];
+        Object.keys(weekSummary).forEach(cat => { wLabels.push(cat); wData.push(weekSummary[cat]); wColors.push(getColorForCategory(cat)); });
+        if(wData.length === 0) { wLabels = ['本周暂无支出']; wData = [1]; wColors = [emptyChartColor]; }
+        
+        weekChartInst = new Chart(ctxWeek, { type: 'pie', data: { labels: wLabels, datasets: [{ data: wData, backgroundColor: wColors, borderWidth: 2, borderColor: isDark ? '#1c1c1e' : '#fff' }] }, options: { maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } } } });
+    }
+
+    function switchView(view) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
+        if (view === 'month') { document.querySelectorAll('.tab-btn')[0].classList.add('active'); document.getElementById('viewMonth').classList.add('active'); } 
+        else { document.querySelectorAll('.tab-btn')[1].classList.add('active'); document.getElementById('viewWeek').classList.add('active'); }
+    }
+
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { renderApp(); });
+
+    // 如果还没有设置预算，弹出提示
+    if (monthlyBudget <= 0) {
+        setTimeout(() => { setMonthlyBudget(); }, 500);
+    }
+
+    renderApp();
+</script>
+
+</body>
+</html>
